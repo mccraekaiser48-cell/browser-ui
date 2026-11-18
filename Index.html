@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Tab</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: #18191c; color: #f1f3f4; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .tab-bar { display: flex; align-items: center; background: #111214; padding: 6px 8px 0; gap: 4px; height: 38px; }
+  .tab { display: flex; align-items: center; justify-content: space-between; background: #1e2024; color: #aaa; padding: 6px 12px; border-radius: 8px 8px 0 0; min-width: 140px; max-width: 220px; font-size: 12px; cursor: pointer; user-select: none; }
+  .tab.active { background: #292b30; color: #fff; font-weight: 500; }
+  .tab-close { margin-left: 8px; border-radius: 50%; padding: 0 5px; font-size: 13px; }
+  .tab-close:hover { background: #444; color: #fff; }
+  .new-tab-btn { background: none; border: none; color: #aaa; font-size: 18px; padding: 2px 8px; cursor: pointer; border-radius: 6px; }
+  .new-tab-btn:hover { background: #292b30; color: #fff; }
+  .nav-bar { display: flex; align-items: center; background: #292b30; padding: 6px 10px; gap: 8px; border-bottom: 1px solid #35373d; }
+  .nav-btn { background: none; border: none; color: #ccc; font-size: 15px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+  .nav-btn:hover { background: #3a3d45; color: #fff; }
+  .url-input { flex: 1; background: #18191c; border: 1px solid #3c3f46; color: #fff; padding: 7px 14px; border-radius: 20px; font-size: 13px; outline: none; }
+  .url-input:focus { border-color: #ff5500; }
+  .bookmarks { display: flex; gap: 10px; background: #292b30; padding: 4px 14px 6px; font-size: 12px; border-bottom: 1px solid #111; }
+  .bm { color: #bbb; cursor: pointer; padding: 2px 8px; border-radius: 4px; }
+  .bm:hover { background: #3a3d45; color: #fff; }
+  .viewport { flex: 1; position: relative; background: #fff; }
+  iframe { width: 100%; height: 100%; border: none; display: none; }
+  iframe.active { display: block; }
+</style>
+</head>
+<body>
+
+<div class="tab-bar" id="tabBar">
+  <button class="new-tab-btn" onclick="createTab()">+</button>
+</div>
+
+<div class="nav-bar">
+  <button class="nav-btn" onclick="reloadTab()" title="Reload">↻</button>
+  <button class="nav-btn" onclick="cloakTab()" title="Open in about:blank">🥷</button>
+  <input type="text" class="url-input" id="urlInput" placeholder="Search or enter website URL..." onkeydown="if(event.key==='Enter') navigate(this.value)">
+</div>
+
+<div class="bookmarks">
+  <span class="bm" onclick="navigate('https://duckduckgo.com')">DuckDuckGo</span>
+  <span class="bm" onclick="navigate('https://wikipedia.org')">Wikipedia</span>
+  <span class="bm" onclick="navigate('https://reddit.com')">Reddit</span>
+  <span class="bm" onclick="navigate('https://ycombinator.com')">Hacker News</span>
+</div>
+
+<div class="viewport" id="viewport"></div>
+
+<script>
+  const WORKER_URL = "https://workers.dev";
+
+  let tabs = [];
+  let activeId = null;
+
+  function createTab(initialUrl = "https://duckduckgo.com") {
+    const id = Date.now() + Math.random();
+    const iframe = document.createElement("iframe");
+    iframe.id = "frame-" + id;
+    document.getElementById("viewport").appendChild(iframe);
+
+    tabs.push({ id, title: "New Tab", url: initialUrl });
+    switchTab(id);
+    navigate(initialUrl);
+  }
+
+  function switchTab(id) {
+    activeId = id;
+    renderTabs();
+    document.querySelectorAll("iframe").forEach(f => f.classList.remove("active"));
+    const activeFrame = document.getElementById("frame-" + id);
+    if (activeFrame) activeFrame.classList.add("active");
+    const tab = tabs.find(t => t.id === id);
+    if (tab) document.getElementById("urlInput").value = tab.url;
+  }
+
+  function closeTab(e, id) {
+    e.stopPropagation();
+    if (tabs.length === 1) return;
+    tabs = tabs.filter(t => t.id !== id);
+    const frame = document.getElementById("frame-" + id);
+    if (frame) frame.remove();
+    if (activeId === id) switchTab(tabs[tabs.length - 1].id);
+    else renderTabs();
+  }
+
+  function renderTabs() {
+    const bar = document.getElementById("tabBar");
+    const addBtn = bar.querySelector(".new-tab-btn");
+    bar.innerHTML = "";
+    tabs.forEach(t => {
+      const el = document.createElement("div");
+      el.className = "tab" + (t.id === activeId ? " active" : "");
+      el.onclick = () => switchTab(t.id);
+      el.innerHTML = `<span>${t.title}</span><span class="tab-close" onclick="closeTab(event, ${t.id})">×</span>`;
+      bar.appendChild(el);
+    });
+    bar.appendChild(addBtn);
+  }
+
+  function navigate(input) {
+    let target = input.trim();
+    if (!target) return;
+    if (!target.startsWith("http://") && !target.startsWith("https://")) {
+      if (target.includes(".") && !target.includes(" ")) {
+        target = "https://" + target;
+      } else {
+        target = "https://duckduckgo.com?q=" + encodeURIComponent(target);
+      }
+    }
+    const tab = tabs.find(t => t.id === activeId);
+    if (!tab) return;
+    tab.url = target;
+    try { tab.title = new URL(target).hostname.replace("www.", ""); } catch { tab.title = "Tab"; }
+    document.getElementById("urlInput").value = target;
+    renderTabs();
+
+    const frame = document.getElementById("frame-" + activeId);
+    frame.src = `${WORKER_URL}/?url=${encodeURIComponent(target)}`;
+  }
+
+  function reloadTab() {
+    const tab = tabs.find(t => t.id === activeId);
+    if (tab) navigate(tab.url);
+  }
+
+  function cloakTab() {
+    const win = window.open("about:blank", "_blank");
+    if (!win) return alert("Allow popups to use about:blank cloaking.");
+    win.document.body.style.margin = "0";
+    const f = win.document.createElement("iframe");
+    f.style.width = "100vw"; f.style.height = "100vh"; f.style.border = "none";
+    f.src = window.location.href;
+    win.document.body.appendChild(f);
+  }
+
+  createTab();
+</script>
+</body>
+</html>
